@@ -29,17 +29,20 @@
        (f @r))
 
      IWatchable
-     (-add-watch [this key callback]
+     (-add-watch
+       [this key callback]
        (add-watch r
                   [this key]
                   (fn [_key _ref old-state new-state]
                     (callback key this (f old-state) (f new-state)))))
 
-     (-remove-watch [this key]
+     (-remove-watch
+       [this key]
        (remove-watch r [this key]))
 
      IPrintWithWriter
-     (-pr-writer [this writer _opts]
+     (-pr-writer
+       [this writer _opts]
        (-write writer (str "#<Entangled reference: " @this ">")))))
 
 (alter-meta! #'->-EntangledReference assoc :no-doc true)

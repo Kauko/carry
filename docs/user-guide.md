@@ -356,13 +356,13 @@ An example from [TodoMVC](/examples/#todomvc) app:
 As you can see, we get reactions from a view model and deref them to render actual values.
 Reagent will then "magically" re-render components when the reactions passed into them are updated.
   
-## Usage with Figwheel
+## Usage with Figwheel and REPL
 With [Figwheel](https://github.com/bhauman/lein-figwheel) Leiningen plugin it is possible to:
 
 * compile and reload app code in browser on source code changes
 * communicate with a running app via REPL
 
-All the Carry [examples](/examples) use Figwheel for development builds and 
+Most of Carry [examples](/examples) use Figwheel for development builds and 
 rely on the "bare" [lein-cljsbuild](https://github.com/emezeske/lein-cljsbuild) for production builds.
 
 The main thing to remember is to stop the currently running app before hot reload 
@@ -403,7 +403,104 @@ Here's how you can structure your main app file to be used with Figwheel:
 (defn on-jsload
   []
   #_(. js/console clear))
-```  
+```
+
+To get an interactive development environment run:
+
+```
+lein figwheel
+```
+    
+or better:
+
+```
+rlwrap lein figwheel
+```
+
+and open your browser at [localhost:3449](http://localhost:3449/).
+This will auto compile and send all changes to the browser without the
+need to reload. After the compilation process is complete, you will
+get a Browser Connected REPL. An easy way to try it is:
+
+```
+(js/alert "Am I connected?")
+```
+
+and you should see an alert in the browser window.
+
+You can also directly access `app` map from REPL:
+
+```
+cljs.user=> (ns app.core)
+nil
+
+app.core=> (keys app)
+(:model :dispatch-signal :view-model)
+
+app.core=> @(:model app)
+{...}
+
+app.core=> ((:dispatch-signal app) :on-increment)
+nil
+```
+
+You may also want to directly modify the app model in REPL without dispatching signals/actions.
+This can be achieved by using [carry-atom-sync](https://github.com/metametadata/carry/tree/master/contrib/atom-sync) middleware
+to create a helper "model atom" specifically for debugging in REPL. An example from [TodoMVC](/examples/#todomvc):
+
+```clj
+(ns app.core
+  (:require [app.spec :as spec]
+            [carry-atom-sync.core :as atom-sync]
+            ; ...
+            )) 
+; ...
+
+; "Model atom" exposed for debugging in REPL.
+(def model (atom nil))
+
+(defn main
+  []
+  (let [app-spec (-> (spec/new-spec ...)
+                     ; ...
+                     ; Apply middleware to setup a sync with "model atom".
+                     (atom-sync/add model))
+        app (carry/app app-spec)
+        ; ...
+        ]
+    ; ...
+    ((:dispatch-signal app) :on-start)
+    ; ...
+    ))
+
+; ...
+```
+
+Now after app is started you can directly work with app model via `model` atom in REPL:
+
+```
+app.core=> (cljs.pprint/pprint (dissoc @model :carry-debugger.core/debugger))
+{:field "",
+ :todos
+ ({:id 0,
+   :title "Finish this project",
+   :completed? false,
+   :original-title "",
+   :editing? false}
+  {:id 1,
+   :title "Take a bath",
+   :completed? true,
+   :original-title "",
+   :editing? false}), 
+ :next-id 2, 
+ :carry-history.core/token ""}
+
+app.core=> (swap! model assoc :field "foobar")
+{:field "foobar", ...}
+
+app.core=> (= @model @(:model app))
+true
+```
 
 # Advanced
 
@@ -1115,3 +1212,164 @@ See examples:
 
 * [Counter DataScript](/examples/#counter-datascript)
 * [Shopping Cart](/examples/#shopping-cart)
+
+## Usage with Devcards
+This section describes how to make Carry work with [Devcards](https://github.com/bhauman/devcards) for a "visual REPL experience".
+Further I assume you have a basic understanding of Devcards and I won't focus on why it's needed, installation details, etc.
+We'll see how to render Carry/Reagent app instances inside cards.
+
+>&#128172; This chapter is based on [counter-devcards](/examples/#counter-devcards) example project.
+
+This is a simplest card for the app which uses `carry-reagent` for UI:
+
+<a href="http://i.imgur.com/5li8ITB.png">
+  <img src="http://i.imgur.com/5li8ITB.png" alt="debugger" style="width: 50vw; display: block; margin: 0 auto;"/>
+</a>
+
+```clj
+(ns app.core
+  (:require [counter.core :as counter]
+            [carry.core :as carry]
+            [carry-reagent.core :as carry-reagent]
+            [reagent.core :as r]
+            [devcards.core])
+  (:require-macros [devcards.core :refer [defcard-rg]]))
+
+; ...
+
+(defcard-rg
+  counter
+  (let [app (carry/app counter/spec)
+        [_ app-view] (carry-reagent/connect app counter/view-model counter/view)]
+    app-view))
+```
+
+Here `defcard-rg` macro is used to render an app Reagent component.
+On hot reload (e.g. via Figwheel) a new app will be created from scratch.
+
+This example lacks dispatching standard `:on-start`/`:on-stop` signals, let's fix this:
+
+```clj
+(defn -with-mount-callbacks
+  [_component on-did-mount on-will-unmount]
+  (r/create-class {:reagent-render         (fn [component _on-did-mount _on-will-unmount] component)
+                   :component-did-mount    (fn [_this] (on-did-mount))
+                   :component-will-unmount (fn [_this] (on-will-unmount))}))
+
+(defcard-rg
+  counter
+  (let [app (carry/app (-> counter/spec
+                           (logging/add "[counter] ")))
+        [_ app-view] (carry-reagent/connect app counter/view-model counter/view)]
+
+    [-with-mount-callbacks
+     app-view
+     #((:dispatch-signal app) :on-start)
+     #((:dispatch-signal app) :on-stop)]))
+```
+
+A helper Reagent component `-with-mount-callbacks` is created for starting the app after mounting and for stopping the app
+when the card component is going to unmount on hot reload. 
+
+Devcards also has an ability to display a simple time traveling "history" widget to go back and forward between recorded
+component state values ([demo](http://rigsomelight.com/devcards/#!/devdemos.core)):
+
+<a href="http://i.imgur.com/E9iAXU3.png">
+  <img src="http://i.imgur.com/E9iAXU3.png" alt="debugger" style="width: 15vw; display: block; margin: 0 auto;"/>
+</a>
+
+```clj
+(defcard bmi-calculator                        ;; optional symbol name
+  "*Code taken from Reagent readme.*"          ;; optional markdown doc
+  (fn [data-atom _] (bmi-component data-atom)) ;; object of focus
+  {:height 180 :weight 80}                     ;; optional initial data
+  {:inspect-data true :history true})          ;; optional devcard config options
+```
+
+It doesn't work out out-of-box with Carry because a Carry app has no ability to expose its underlying model atom to a card.
+To solve this we use [carry-atom-sync](https://github.com/metametadata/carry/tree/master/contrib/atom-sync) middleware
+which creates a bidirectionally sync between the "data atom" created by Devcards and an app model:
+
+<a href="http://i.imgur.com/5F2sD9A.png">
+  <img src="http://i.imgur.com/5F2sD9A.png" alt="debugger" style="width: 50vw; display: block; margin: 0 auto;"/>
+</a>
+
+```clj
+(ns app.core
+  (:require [counter.core :as counter]
+            [carry.core :as carry]
+            [carry-atom-sync.core :as carry-atom-sync]
+            [carry-reagent.core :as carry-reagent]
+            [cljs.core.match :refer-macros [match]]
+            [devcards.core])
+  (:require-macros [devcards.core :refer [defcard-rg]]))
+  
+; ...
+
+(defcard-rg
+  counter-with-history
+  "Preserves model value between hot reloads."
+  (fn [data-atom _]
+    ; Create app instance.
+    (let [app (carry/app (-> counter/spec
+
+                             ; Get model value from data atom.
+                             (assoc :initial-model @data-atom)
+
+                             ; Setup bidirectional sync with data atom.
+                             (carry-atom-sync/add data-atom)
+
+                             (logging/add "[counter-with-history] ")))
+          [_ app-view] (carry-reagent/connect app counter/view-model counter/view)]
+      ; Render app view.
+      [-with-mount-callbacks
+       app-view
+
+       ; Start the app after mounting.
+       #((:dispatch-signal app) :on-start)
+
+       ; Stop the app on umount/hot-reload.
+       #((:dispatch-signal app) :on-stop)]))
+
+  ; Create data atom with initial model value.
+  (atom (:initial-model counter/spec))
+
+  ; Card options.
+  {:inspect-data true
+   :history      true})
+```
+
+What's happening here:
+
+1. A new app instance is created on each hot reload.
+2. The data atom is created once and then conveniently preserves its value between hot reloads.
+3. On creation an app takes its initial value from the data atom.
+4. On UI interactions all app model updates are propagated into the data atom enlarging the card's history stack.
+5. On clicking history widget buttons the data atom is updated and its new values are synced back into the app model. 
+ 
+Of course, if a lot of cards are created like this then extracting a 
+helper macro should be considered in order to reduce code duplication.
+
+Note that we must start the app only after mounting.
+Otherwise, starting app synchronously in a card function will produce
+a *"setState(...): Cannot update during an existing state transition"* warning on hot reloads
+(because `carry-atom-sync` middleware resets `data-atom`):
+
+```clj
+(defcard-rg
+  counter-with-history
+  (fn [data-atom _]
+   ; ...
+   
+   ; Will produce a warning:
+   ((:dispatch-signal app) :on-start)   
+      
+   [-with-mount-callbacks
+    app-view
+    ; ...
+    ])
+    
+   ; ...
+  )
+```
+ 

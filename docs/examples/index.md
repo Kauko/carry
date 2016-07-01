@@ -49,6 +49,7 @@ for rendering UI using [Reagent](https://github.com/reagent-project/reagent)
 * [carry-debugger](https://github.com/metametadata/carry/tree/master/contrib/debugger/) for time traveling debugging
 * [carry-logging](https://github.com/metametadata/carry/tree/master/contrib/logging/) for logging to console
 * uses [Specter](https://github.com/nathanmarz/specter) for model updates
+* [carry-atom-sync](https://github.com/metametadata/carry/tree/master/contrib/atom-sync) to directly access app model as an atom in REPL
 
 # Pickings
 [Source code](https://github.com/metametadata/pickings)
@@ -98,3 +99,17 @@ for rendering UI using [Reagent](https://github.com/reagent-project/reagent).
 The more advanced example of using [DataScript](https://github.com/tonsky/datascript) 
 and [carry-reagent](https://github.com/metametadata/carry/tree/master/contrib/reagent/).
 Inspired by [flux-comparison](https://github.com/voronianski/flux-comparison) problem.
+
+# Counter Devcards
+[Source code](https://github.com/metametadata/carry/tree/master/examples/counter-devcards)
+
+[Demo](/examples/counter-devcards)
+
+An example of rendering [counter app](#counter) in [Devcards](https://github.com/bhauman/devcards).
+
+Features:
+
+* [carry-atom-sync](https://github.com/metametadata/carry/tree/master/contrib/atom-sync) for making Devcards history work seamlessly with Carry
+* [carry-reagent](https://github.com/metametadata/carry/tree/master/contrib/reagent/)
+for rendering UI using [Reagent](https://github.com/reagent-project/reagent) 
+* [carry-logging](https://github.com/metametadata/carry/tree/master/contrib/logging/) for logging to console
